@@ -1,0 +1,97 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include "DHT.h"
+
+
+
+
+// Replace the next variables with your SSID/Password combination
+char* ssid = "wifi SSID";
+const char* password = "wifi parool käib siia";
+
+// Add your MQTT Broker IP address, example:
+
+const char* mqtt_server = "192.168.1.137"; /7 mqtt serveri IP
+
+#define DHTPIN 4
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+
+#define BUF_SIZE 128
+char mqtt_temp_buf[BUF_SIZE]; //buffer temperatuuri jaoks jaoks
+char mqtt_hum_buf[BUF_SIZE];  //buffer niiskuse jaoks jaoks
+
+
+WiFiClient espClient; // nõidus
+PubSubClient client(espClient); //nõidus
+long lastMsg = 0;
+
+void setup() {
+  Serial.begin(9600); // kui tahame seriali midagi printida siis alustatagu
+  dht.begin();
+  setup_wifi();
+  client.setServer(mqtt_server, 1883); //eeem
+
+}
+
+void setup_wifi() {
+  delay(10);
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.print(password);
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  //seni kuni ühendust wifiga pole, prindi serial punkte, et noh oleks aru saada et liigutab
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect("esp32")) {
+      Serial.println("connected");
+     //
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+  float h = dht.readHumidity(); //loeme andurist niiskuse näidu 
+  float t = dht.readTemperature(); //loeme andurist tempi näidu
+  long now = millis();  
+  if (now - lastMsg > 5000) {  //kui tihti loeme, millisekundites
+    lastMsg = now;
+
+     
+     sprintf(mqtt_hum_buf, "%.2f", h ); // kirjutame niiskuse bufferisse (.2 annab selle, et kaks kohta 
+     Serial.println(h); //prindime serialporti niiskuse näidu, kontrolli mõttes
+     sprintf(mqtt_temp_buf, "%.2f", t ); // kirjutame niiskuse bufferisse
+     Serial.println(t); //prindime serialporti niiskuse näidu, kontrolli mõttes 
+     
+     client.publish("/andur1/temp", mqtt_temp_buf); // määrame sõnumile topicu mida hiljem subscribeme või kasutame HA's ja  saadame temperatuuri näidu  mqtt serverisse
+     client.publish("/andur1/hum", mqtt_hum_buf); // määrame sõnumile topicu mida hiljem subscribeme või kasutame HA's ja saadame niiskuse mqtt serverisse
+  }
+}
